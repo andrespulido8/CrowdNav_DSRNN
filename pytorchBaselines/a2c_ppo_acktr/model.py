@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import numpy as np
 
 from pytorchBaselines.a2c_ppo_acktr.distributions import Bernoulli, Categorical, DiagGaussian
 from pytorchBaselines.a2c_ppo_acktr.srnn_model import SRNN
@@ -60,36 +60,54 @@ class Policy(nn.Module):
         dist = self.dist(actor_features)
 
         # inputs is a dictionary of keys: ['robot_node', 'spatial_edges', 'temporal_edges']
-        print("input robot_node shape", inputs['robot_node'].shape)
-        print("input robot_node: ", inputs['robot_node'])
+        #print("input robot_node shape", inputs['robot_node'].shape)
+        #print("input robot_node: ", inputs['robot_node'])
         # actor_features is a tensor of shape [1, 256]
         # Dist is a pytorchBaselines.a2c_ppo_acktr.distributions.FixedNormal class
         # dist has 
-        print("dist variables: ", dist.__dict__.keys())
-        print("dist: ", dist)
+        #print("dist variables: ", dist.__dict__.keys())
+        #print("dist: ", dist)
+        #print("dist: ", dist["loc"])
 
         # Safety Shield  (pseudocode)
         human_rad = 0.3 # [m] default
         human_vmax = 1  # [m/s] default
         dt = 0.25 # [s] default
-        num_agents = len(input["spation_nodes"]) # something like length in obs
-        robot_pos = input['robot_node'][0, 0, 0:2].cpu().numpy()  # robot px, py
-        print("robot_pos: ", robot_pos)
+        num_agents = len(inputs["spatial_edges"][0]) 
+        robot_pos = inputs['robot_node'][0, 0, 0:2].numpy()  # robot px, py
+        counter = 0
+        action = dist.mode().numpy()
+        #print("robot_pos: ", robot_pos)
         for ag in range(num_agents):
-            for ii, act in enumerate(dist):
-                fut_pos = robot_pos + act*dt
-                distance = torch.norm(fut_pos - ag, dim=1)
+            counter = 0
+            human_pos = inputs['spatial_edges'][0, ag, 0:2].numpy() + robot_pos # human px, py
+            while counter < 10:
+                fut_pos = robot_pos + action*dt
+                # distance between robot and human
+                distance = np.linalg.norm(fut_pos - human_pos)
                 if distance < human_rad + human_vmax*dt:
                     # action is unsafe
-                    dist[ii] = torch.tensor([0,0]) # do not move
+                    print("action is unsafe!")
+                    action = dist.sample().numpy()
+                else:
+                    break
+                counter += 1
+                print("Counter threshold reached!") if counter == 10 else None
+        
+        action = torch.from_numpy(action)
+
 
         # maybe change the action after taking the mode or sample
 
-        if deterministic:
-            action = dist.mode()
-        else:
-            action = dist.sample()
+        # TODO: account for non deterministic when training
+        #if deterministic:
+        #    action = dist.mode()
+        #else:
+        #    action = dist.sample()
 
+        # resulted action is a tensor of shape [1, 2]
+        #print("action: ", action)
+        #print(" ")
         action_log_probs = dist.log_probs(action)
         dist_entropy = dist.entropy().mean()
 

@@ -59,6 +59,22 @@ class Policy(nn.Module):
             value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
         dist = self.dist(actor_features)
 
+        # Safety Shield  (pseudocode)
+        human_rad = 0.3 # [m] default
+        human_vmax = 1  # [m/s] default
+        dt = 0.25 # [s] default
+        #num_agents = # something like length in obs
+        robot_pos = obs['robot_node'][0, 0, 0:2].cpu().numpy()  # robot px, py
+        # all possible future robot positions
+        for ag in range(num_agents):
+            for ii, act in enumerate(dist):
+                fut_pos = robot_pos + act*dt
+                distance = torch.norm(fut_pos - ag, dim=1)
+                if distance < human_rad:
+                    dist[ii] = torch.tensor([0,0]) # do not move
+
+        # maybe change the action after taking the mode or sample
+
         if deterministic:
             action = dist.mode()
         else:

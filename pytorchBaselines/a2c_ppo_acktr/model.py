@@ -69,41 +69,41 @@ class Policy(nn.Module):
         #print("dist: ", dist)
         #print("dist: ", dist["loc"])
 
-        # Safety Shield  (pseudocode)
-        human_rad = 0.3 # [m] default
-        human_vmax = 1  # [m/s] default
-        dt = 0.25 # [s] default
-        num_agents = len(inputs["spatial_edges"][0]) 
-        robot_pos = inputs['robot_node'][0, 0, 0:2].numpy()  # robot px, py
-        counter = 0
-        action = dist.mode().numpy()
-        #print("robot_pos: ", robot_pos)
-        for ag in range(num_agents):
+        is_safety_shield = True
+        if is_safety_shield: 
+            human_rad = 0.3 # [m] default
+            human_vmax = 1  # [m/s] default
+            dt = 0.25 # [s] default
+            k = 1 # time steps in the future 
+            num_agents = len(inputs["spatial_edges"][0]) 
+            robot_pos = inputs['robot_node'][0, 0, 0:2].numpy()  # robot px, py
             counter = 0
-            human_pos = inputs['spatial_edges'][0, ag, 0:2].numpy() + robot_pos # human px, py
-            while counter < 10:
-                fut_pos = robot_pos + action*dt
-                # distance between robot and human
-                distance = np.linalg.norm(fut_pos - human_pos)
-                if distance < human_rad + human_vmax*dt:
-                    # action is unsafe
-                    print("action is unsafe!")
-                    action = dist.sample().numpy()
-                else:
-                    break
-                counter += 1
-                print("Counter threshold reached!") if counter == 10 else None
+            action = dist.mode().numpy()
+            #print("robot_pos: ", robot_pos)
+            for ag in range(num_agents):
+                counter = 0
+                human_pos = inputs['spatial_edges'][0, ag, 0:2].numpy() + robot_pos # human px, py
+                while counter < 10:
+                    fut_pos = robot_pos + action*dt*k
+                    # distance between robot and human
+                    distance = np.linalg.norm(fut_pos - human_pos)
+                    if distance < human_rad + human_vmax*dt:
+                        # action is unsafe
+                        print("action is unsafe!")
+                        action = dist.sample().numpy()
+                    else:
+                        break
+                    counter += 1
+                    print("Counter threshold reached!") if counter == 10 else None
         
-        action = torch.from_numpy(action)
+            action = torch.from_numpy(action)
+        else:
+            # maybe change the action after taking the mode or sample
 
-
-        # maybe change the action after taking the mode or sample
-
-        # TODO: account for non deterministic when training
-        #if deterministic:
-        #    action = dist.mode()
-        #else:
-        #    action = dist.sample()
+            if deterministic:
+                action = dist.mode()
+            else:
+                action = dist.sample()
 
         # resulted action is a tensor of shape [1, 2]
         #print("action: ", action)
